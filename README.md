@@ -45,6 +45,10 @@ $ yarn run start:dev
 $ yarn run start:prod
 ```
 
+## API request
+> localhost:5090
+
+
 ## Test
 
 ```bash

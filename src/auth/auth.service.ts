@@ -1,21 +1,37 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RequestTokenDto } from './dto/auth_server_request.dto';
 import axios from 'axios';
 import { CreateUserDto } from './dto/createUser.dto';
 import * as bcrypt from 'bcrypt';
 import { DatabaseService } from 'src/database/database.service';
+import { ConfigService } from '@nestjs/config';
+import { user_role } from '@prisma/client';
 
-interface UserRequestToken {
+export interface UserSignIn {
   email: string;
   password: string;
 }
+
+interface AuthDetails {
+  id: number;
+  username: string;
+  email: string;
+  password: string;
+  roles: user_role;
+  // created_at: string;
+  // updated_at: string;
+}
+
 @Injectable()
 export class AuthService {
-  constructor(private databaseService: DatabaseService) {}
+  constructor(
+    private databaseService: DatabaseService,
+    private configService: ConfigService
+  ) {}
 
   async fetch_token(requestUser: RequestTokenDto) {
     const url = 'http://localhost:5080/api/v1/auth/token';
-    const userSignInCredential: UserRequestToken = requestUser;
+    const userSignInCredential: UserSignIn = requestUser;
 
     try {
       const { data } = await axios.post(url, userSignInCredential, {
@@ -34,7 +50,7 @@ export class AuthService {
 
     const isUserExisting = await this.checkUserExisting(email, username);
 
-    if (isUserExisting) {
+    if (isUserExisting.exist) {
       throw new ConflictException('User already exist');
     }
 
@@ -64,26 +80,70 @@ export class AuthService {
     return saveUser;
   }
 
-  async checkUserExisting(email: string, username: string) {
-    let isUserExisting = false;
-    const isEmailExisting = await this.databaseService.auth.findUnique({
-      where: { email }
-    });
+  async userSignIn(userSignIn: UserSignIn) {
+    const reqEmail = userSignIn.email;
+    const hashedPassword = userSignIn.password;
+    // const tokenSecret = this.configService.get<string>('TOKEN_SECRET');
 
-    const isUsernameExisting = await this.databaseService.auth.findUnique({
-      where: { username }
+    const isUserExisting = await this.checkUserExisting(reqEmail);
+
+    if (!isUserExisting.exist) {
+      throw new UnauthorizedException('Email or password do not match');
+    }
+
+    const { password } = isUserExisting.details;
+    // const isPasswordCorrect = await bcrypt.compareSync(password, hashedPassword);
+    const isPasswordCorrect = await bcrypt.compareSync(hashedPassword, password);
+
+    if (!isPasswordCorrect) {
+      throw new UnauthorizedException('Email or password do not match');
+    }
+
+    return isPasswordCorrect;
+  }
+
+  async checkUserExisting(email: string, username?: string) {
+    let isUserExisting = false;
+    const isEmailExisting: AuthDetails = await this.databaseService.auth.findUnique({
+      where: { email }
     });
 
     if (isEmailExisting !== null) {
       isUserExisting = true;
-      return isUserExisting;
+      return {
+        exist: isUserExisting,
+        details: {
+          id: isEmailExisting.id,
+          username: isEmailExisting.username,
+          email: isEmailExisting.email,
+          password: isEmailExisting.password,
+          roles: isEmailExisting.roles
+        }
+      };
     }
 
-    if (isUsernameExisting !== null) {
-      isUserExisting = true;
-      return isUserExisting;
+    if (username) {
+      const isUsernameExisting: AuthDetails = await this.databaseService.auth.findUnique({
+        where: { username }
+      });
+
+      if (isUsernameExisting !== null) {
+        isUserExisting = true;
+        return {
+          exist: isUserExisting,
+          details: {
+            id: isUsernameExisting.id,
+            username: isUsernameExisting.username,
+            email: isUsernameExisting.email,
+            roles: isUsernameExisting.roles
+          }
+        };
+      }
     }
 
-    return isUserExisting;
+    return {
+      exist: isUserExisting,
+      details: {}
+    };
   }
 }

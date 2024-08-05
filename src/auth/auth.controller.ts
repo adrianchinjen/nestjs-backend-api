@@ -1,5 +1,5 @@
 import { Body, Controller, Post, ValidationPipe } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthService, UserSignIn } from './auth.service';
 import { RequestTokenDto } from './dto/auth_server_request.dto';
 import { CreateUserDto } from './dto/createUser.dto';
 
@@ -14,8 +14,14 @@ export class AuthController {
   }
 
   @Post('signup')
-  signup(@Body(ValidationPipe) userCredentials: CreateUserDto) {
+  async signup(@Body(ValidationPipe) userCredentials: CreateUserDto) {
     const userDetails = this.authService.userSignUp(userCredentials);
     return userDetails;
+  }
+
+  @Post('signin')
+  async signin(@Body() userInput: UserSignIn) {
+    const requestSignIn = await this.authService.userSignIn(userInput);
+    return requestSignIn;
   }
 }
